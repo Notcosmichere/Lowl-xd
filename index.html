@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Glowing Particle Morph</title>
+    <title>Glowing Particle Morph & Reset</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         #ui {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 10px; background: rgba(255, 255, 255, 0.05);
@@ -14,21 +14,24 @@
         }
         input {
             background: transparent; border: none; color: white; padding: 8px;
-            outline: none; font-size: 16px; width: 200px;
+            outline: none; font-size: 16px; width: 180px;
         }
         button {
-            background: linear-gradient(45deg, #8e44ad, #bc6ff1); color: white;
-            border: none; padding: 10px 25px; border-radius: 25px;
+            background: rgba(255, 255, 255, 0.1); color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2); padding: 10px 20px; border-radius: 25px;
             cursor: pointer; font-weight: bold; transition: 0.3s;
         }
-        button:hover { transform: scale(1.05); filter: brightness(1.2); }
+        button#morphBtn { background: linear-gradient(45deg, #8e44ad, #bc6ff1); border: none; }
+        button:hover { transform: scale(1.05); background: rgba(255, 255, 255, 0.2); }
+        button#morphBtn:hover { filter: brightness(1.2); }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <input type="text" id="textInput" placeholder="Type here..." value="WSUP_XD">
+    <input type="text" id="textInput" placeholder="Type here..." value="GEMINI">
     <button id="morphBtn">MORPH</button>
+    <button id="sphereBtn">SPHERE</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -44,7 +47,9 @@
     let scene, camera, renderer, particles, geometry, composer;
     let isRotating = true; 
     const particleCount = 20000;
-    const spherePositions = new Float32Array(particleCount * 3);
+    
+    // We store the original sphere coordinates here to use them later
+    const sphereData = []; 
 
     init();
     animate();
@@ -59,29 +64,33 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- Bloom Setup ---
         const renderScene = new THREE.RenderPass(scene, camera);
-        const bloomPass = new THREE.UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight), 
-            1.5, 0.4, 0.85
-        );
+        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         composer = new THREE.EffectComposer(renderer);
         composer.addPass(renderScene);
         composer.addPass(bloomPass);
 
-        // --- Particles ---
+        const initialPositions = new Float32Array(particleCount * 3);
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
             const r = 90;
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
-            spherePositions[i3] = r * Math.sin(phi) * Math.cos(theta);
-            spherePositions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-            spherePositions[i3 + 2] = r * Math.cos(phi);
+            
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+
+            initialPositions[i3] = x;
+            initialPositions[i3 + 1] = y;
+            initialPositions[i3 + 2] = z;
+
+            // Save for reset
+            sphereData.push({ x, y, z });
         }
 
         geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(spherePositions), 3));
+        geometry.setAttribute('position', new THREE.BufferAttribute(initialPositions, 3));
 
         const material = new THREE.PointsMaterial({
             color: 0xbc6ff1,
@@ -93,10 +102,15 @@
         particles = new THREE.Points(geometry, material);
         scene.add(particles);
 
+        // --- BUTTON EVENTS ---
         document.getElementById('morphBtn').addEventListener('click', () => {
             isRotating = false;
             gsap.to(particles.rotation, { y: 0, duration: 1 });
             morphToText(document.getElementById('textInput').value);
+        });
+
+        document.getElementById('sphereBtn').addEventListener('click', () => {
+            backToSphere();
         });
     }
 
@@ -130,6 +144,28 @@
                 [i3 + 1]: target.y,
                 [i3 + 2]: (Math.random() - 0.5) * 10,
                 onUpdate: () => geometry.attributes.position.needsUpdate = true
+            });
+        }
+    }
+
+    function backToSphere() {
+        const pos = geometry.attributes.position.array;
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            const target = sphereData[i];
+
+            gsap.to(pos, {
+                duration: 2,
+                ease: "expo.inOut",
+                [i3]: target.x,
+                [i3 + 1]: target.y,
+                [i3 + 2]: target.z,
+                onUpdate: () => {
+                    geometry.attributes.position.needsUpdate = true;
+                },
+                onComplete: () => {
+                    isRotating = true; // Start rotating again once finished
+                }
             });
         }
     }
